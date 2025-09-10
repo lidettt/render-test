@@ -28,7 +28,7 @@ const requestLogger = (request, response, next) => {
 app.use(express.json());
 app.use(cors());
 app.use(requestLogger);
-
+app.use(express.static("dist"));
 app.get("/", (request, response) => {
   response.send("<h1>Hello World!</h1>");
 });
@@ -45,7 +45,7 @@ const generateId = () => {
 app.post("/api/notes", (request, response) => {
   const body = request.body;
   if (!body.content) {
-    return response.status(404).json({ error: "content missing" });
+    return response.status(400).json({ error: "content missing" });
   }
   const note = {
     content: body.content,
@@ -69,6 +69,17 @@ app.delete("/api/notes/:id", (request, response) => {
   const id = request.params.id;
   notes = notes.filter((note) => note.id !== id);
   response.status(204).end();
+});
+app.put("/api/notes/:id", (request, response) => {
+  const id = request.params.id;
+  const noteIndex = notes.findIndex((n) => n.id === id);
+
+  if (noteIndex === -1)
+    return response.status(404).json({ error: "note not found" });
+
+  const updatedNote = { ...notes[noteIndex], ...request.body };
+  notes[noteIndex] = updatedNote;
+  response.json(updatedNote);
 });
 
 const unknownEndpoint = (request, response) => {
