@@ -1,23 +1,9 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-let notes = [
-  {
-    id: "1",
-    content: "HTML is easy",
-    important: true,
-  },
-  {
-    id: "2",
-    content: "Browser can execute only JavaScript",
-    important: false,
-  },
-  {
-    id: "3",
-    content: "GET and POST are the most important methods of HTTP protocol",
-    important: true,
-  },
-];
+require("dotenv").config();
+const Note = require("./models/note");
+
 const requestLogger = (request, response, next) => {
   console.log("Method : ", request.method);
   console.log("Path : ", request.path);
@@ -34,58 +20,74 @@ app.get("/", (request, response) => {
 });
 // route for getting all the notes
 app.get("/api/notes", (request, response) => {
-  response.json(notes);
+  Note.find({}).then((notes) => response.json(notes));
 });
-const generateId = () => {
-  const maxId =
-    notes.length > 0 ? Math.max(...notes.map((n) => Number(n.id))) : 0;
-  return String(maxId + 1);
-};
+
 //route for adding data (new note)
 app.post("/api/notes", (request, response) => {
   const body = request.body;
   if (!body.content) {
     return response.status(400).json({ error: "content missing" });
   }
-  const note = {
+  const note = new Note({
     content: body.content,
     important: body.important || false,
-    id: generateId(),
-  };
-  notes = notes.concat(note);
-  response.json(note);
+  });
+
+  note.save().then((savedNote) => {
+    response.json(savedNote);
+  });
 });
 //route for fetching a single resource
 app.get("/api/notes/:id", (request, response) => {
-  const id = request.params.id;
-  const note = notes.find((note) => note.id === id);
-  if (note) {
-    response.json(note);
-  } else {
-    response.status(404).end();
-  }
+  Note.findById(request.params.id)
+    .then((note) => {
+      if (note) {
+        response.json(note);
+      } else {
+        response.status(404).end();
+      }
+    })
+    .catch((error) => next(error));
 });
 app.delete("/api/notes/:id", (request, response) => {
-  const id = request.params.id;
-  notes = notes.filter((note) => note.id !== id);
-  response.status(204).end();
+  Note.findByIdAndDelete(request.params.id)
+    .then((result) => {
+      response.status(204).end();
+    })
+    .catch((error) => next(error));
 });
 app.put("/api/notes/:id", (request, response) => {
-  const id = request.params.id;
-  const noteIndex = notes.findIndex((n) => n.id === id);
-
-  if (noteIndex === -1)
-    return response.status(404).json({ error: "note not found" });
-
-  const updatedNote = { ...notes[noteIndex], ...request.body };
-  notes[noteIndex] = updatedNote;
-  response.json(updatedNote);
+  const { content, important } = request.body;
+  Note.findById(request.params.id).then((note) => {
+    if (!note) {
+      return response.status(404).end();
+    }
+    note.content = content;
+    note.important = important;
+    return note
+      .save()
+      .then((updatedNote) => {
+        response.json(updatedNote);
+      })
+      .catch((error) => next(error));
+  });
 });
 
 const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: "unknown endpoint" });
 };
 app.use(unknownEndpoint);
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT;
 app.listen(PORT);
 console.log(`Server running on port ${PORT}`);
+
+const errorHandler = (error, request, response, next) => {
+  console.log(error.message);
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malfomatted id" });
+  }
+  next(error);
+};
+// this has to be the last loaded middleware, also all the routes should be registered before this!
+app.use(errorHandler);
